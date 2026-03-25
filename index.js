@@ -8,7 +8,7 @@ dotenv.config();
 const app = express();
 app.use(
   cors({
-    origin: "https://ai-code-reviewer-frontend-ruddy.vercel.app/",
+    origin: "*",
   }),
 );
 app.use(express.json());
