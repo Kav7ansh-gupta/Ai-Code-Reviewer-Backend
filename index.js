@@ -1,27 +1,34 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import axios from "axios";
 
 dotenv.config();
 
 const app = express();
-app.use(
-  cors({
-    origin: "*",
-  }),
-);
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// NVIDIA NIM client
+const nvidiaClient = axios.create({
+  baseURL: "https://integrate.api.nvidia.com/v1",
+  headers: {
+    Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+});
 
+// API route
 app.post("/analyze", async (req, res) => {
-  const { code, language } = req.body;
-
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-    });
+    const { code, language } = req.body;
+
+    // Safety check
+    if (!code || !language) {
+      return res.status(400).json({
+        error: "code and language are required",
+      });
+    }
 
     const prompt = `
 You are a senior software engineer.
@@ -37,17 +44,28 @@ Code:
 ${code}
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    const response = await nvidiaClient.post("/chat/completions", {
+      model: "meta/llama3-70b-instruct", // change if needed
+      messages: [
+        { role: "system", content: "You are a helpful coding assistant." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.5,
+      max_tokens: 500,
+    });
 
-    res.json({ result: text });
+    const reply = response.data.choices[0].message.content;
+
+    res.json({ result: reply });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Gemini API error" });
+    console.error("NVIDIA ERROR:", error.response?.data || error.message);
+    res.status(500).json({
+      error: "NVIDIA API error",
+    });
   }
 });
+
 const PORT = process.env.PORT || 5000;
-app.listen(5000, () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
